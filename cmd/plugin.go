@@ -338,6 +338,8 @@ func executePluginInstall(manifest *plugin.Manifest, name string, p plugin.Plugi
 	}
 
 	spinner.Success(fmt.Sprintf("Installed plugin %q (%s)", name, version))
+
+	pluginSkillInstaller(name)
 	return nil
 }
 

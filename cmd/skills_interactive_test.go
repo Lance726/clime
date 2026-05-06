@@ -26,11 +26,14 @@ func TestRunInteractiveSkillsInstallEscFromActionReturnsToSourceMenu(t *testing.
 		selectCalls++
 		switch selectCalls {
 		case 1:
+			// Select existing source "owner/repo".
 			return 0, nil
 		case 2:
+			// Esc from the action menu to go back.
 			return 0, prompt.ErrBack
 		case 3:
-			return 1, nil
+			// Select "Enter a new repository..." (after Plugin Skills option).
+			return 2, nil
 		default:
 			t.Fatalf("unexpected select call %d", selectCalls)
 			return 0, nil
@@ -77,9 +80,11 @@ func TestRunInteractiveSkillsInstallEscAtTopLevelKeepsUIOpen(t *testing.T) {
 		selectCalls++
 		switch selectCalls {
 		case 1:
+			// Esc at source menu.
 			return 0, prompt.ErrBack
 		case 2:
-			return 1, nil
+			// Select "Enter a new repository..." (after Plugin Skills option).
+			return 2, nil
 		default:
 			t.Fatalf("unexpected select call %d", selectCalls)
 			return 0, nil

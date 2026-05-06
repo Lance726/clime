@@ -155,7 +155,7 @@ func runInteractiveSkillsInstall(manifest *skill.Manifest) error {
 		return skillsActionRunner(manifest, repo, actionBrowseInstall)
 	}
 
-	options := append(sources, newRepoOption)
+	options := append(sources, pluginSkillsOption, newRepoOption)
 	showSourceSpacer := true
 	for {
 		if showSourceSpacer {
@@ -168,6 +168,15 @@ func runInteractiveSkillsInstall(manifest *skill.Manifest) error {
 			Options: options,
 		})
 		if err != nil {
+			if errors.Is(err, prompt.ErrBack) {
+				showSourceSpacer = false
+				continue
+			}
+			return err
+		}
+
+		if options[idx] == pluginSkillsOption {
+			err := installFromPluginSkills(manifest)
 			if errors.Is(err, prompt.ErrBack) {
 				showSourceSpacer = false
 				continue
