@@ -105,11 +105,7 @@ func discoverPluginSkillSources() []pluginSkillSource {
 // It scans all plugins for skill sources, presents available skills, and
 // installs the user's selections.
 func installFromPluginSkills(manifest *skill.Manifest) error {
-	spinner := uicli.NewSpinner().
-		WithStyle(uicli.SpinnerDots).
-		WithColor(uicli.CyanColor).
-		WithMessage("Scanning plugins for skills...").
-		Start()
+	spinner := startSpinner("Scanning plugins for skills...")
 
 	sources := discoverPluginSkillSources()
 	if len(sources) == 0 {

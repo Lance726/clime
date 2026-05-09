@@ -317,11 +317,7 @@ func executePluginInstall(manifest *plugin.Manifest, name string, p plugin.Plugi
 		return err
 	}
 
-	spinner := uicli.NewSpinner().
-		WithStyle(uicli.SpinnerDots).
-		WithColor(uicli.CyanColor).
-		WithMessage(fmt.Sprintf("Installing plugin %q...", name)).
-		Start()
+	spinner := startSpinner("Installing plugin %q...", name)
 
 	version, err := inst.Install(name)
 	if err != nil {
@@ -386,11 +382,7 @@ var pluginUninstallCmd = &cobra.Command{
 				continue
 			}
 
-			spinner := uicli.NewSpinner().
-				WithStyle(uicli.SpinnerDots).
-				WithColor(uicli.CyanColor).
-				WithMessage(fmt.Sprintf("Removing plugin %q...", name)).
-				Start()
+			spinner := startSpinner("Removing plugin %q...", name)
 
 			inst, err := installer.FromManifest(entry)
 			if err != nil {
@@ -450,11 +442,7 @@ var pluginUpdateCmd = &cobra.Command{
 			return runPluginUpdateAll()
 		}
 
-		spinner := uicli.NewSpinner().
-			WithStyle(uicli.SpinnerDots).
-			WithColor(uicli.CyanColor).
-			WithMessage(fmt.Sprintf("Checking updates for plugin %q...", name)).
-			Start()
+		spinner := startSpinner("Checking updates for plugin %q...", name)
 
 		manifest, err := plugin.LoadManifest()
 		if err != nil {
@@ -542,11 +530,7 @@ func runPluginUpdateAll() error {
 	)
 
 	for _, name := range names {
-		spinner := uicli.NewSpinner().
-			WithStyle(uicli.SpinnerDots).
-			WithColor(uicli.CyanColor).
-			WithMessage(fmt.Sprintf("Checking %q...", name)).
-			Start()
+		spinner := startSpinner("Checking %q...", name)
 
 		entry, _ := manifest.Get(name)
 		inst, err := installer.FromManifest(entry)

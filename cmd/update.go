@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	uicli "github.com/alperdrsnn/clime"
 	"github.com/git-hulk/clime/internal/selfupdate"
 	"github.com/git-hulk/clime/internal/version"
 	"github.com/spf13/cobra"
@@ -26,11 +25,7 @@ var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update clime to the latest release",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		spinner := uicli.NewSpinner().
-			WithStyle(uicli.SpinnerDots).
-			WithColor(uicli.CyanColor).
-			WithMessage(fmt.Sprintf("Checking for updates in %s...", updateRepo)).
-			Start()
+		spinner := startSpinner("Checking for updates in %s...", updateRepo)
 
 		result, err := selfupdate.Update(selfupdate.Options{
 			Repo:           updateRepo,

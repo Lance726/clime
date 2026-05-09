@@ -41,3 +41,17 @@ func (Terminal) Warning(message string) {
 func (t Terminal) Warningf(format string, args ...any) {
 	t.Warning(fmt.Sprintf(format, args...))
 }
+
+// startSpinner creates and starts a spinner with the project's standard
+// dots-cyan style. The message is built via fmt.Sprintf when args are given.
+func startSpinner(format string, args ...any) *uicli.Spinner {
+	msg := format
+	if len(args) > 0 {
+		msg = fmt.Sprintf(format, args...)
+	}
+	return uicli.NewSpinner().
+		WithStyle(uicli.SpinnerDots).
+		WithColor(uicli.CyanColor).
+		WithMessage(msg).
+		Start()
+}

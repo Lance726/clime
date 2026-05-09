@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"strings"
 
-	uicli "github.com/alperdrsnn/clime"
 	"github.com/git-hulk/clime/internal/installer"
 	"github.com/git-hulk/clime/internal/plugin"
 	"github.com/spf13/cobra"
@@ -81,11 +80,7 @@ Otherwise, the built-in default plugin list is used.`,
 				verb = "Reinstalling"
 			}
 
-			spinner := uicli.NewSpinner().
-				WithStyle(uicli.SpinnerDots).
-				WithColor(uicli.CyanColor).
-				WithMessage(fmt.Sprintf("%s %q...", verb, p.Name)).
-				Start()
+			spinner := startSpinner("%s %q...", verb, p.Name)
 
 			inst, err := installer.FromPlugin(p)
 			if err != nil {

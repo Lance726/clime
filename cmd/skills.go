@@ -265,10 +265,18 @@ func validateSkillRepoSource(repo string) error {
 }
 
 func pickSourceAction(repo string, showSpacer bool) (sourceAction, error) {
-	options := []string{
-		"Browse and install skills",
-		"Update installed skills",
-		"Remove source and its installed skills",
+	choices := []struct {
+		label  string
+		action sourceAction
+	}{
+		{"Browse and install skills", actionBrowseInstall},
+		{"Update installed skills", actionUpdate},
+		{"Remove source and its installed skills", actionRemoveSource},
+	}
+
+	options := make([]string, len(choices))
+	for i, c := range choices {
+		options[i] = c.label
 	}
 
 	if showSpacer {
@@ -281,15 +289,7 @@ func pickSourceAction(repo string, showSpacer bool) (sourceAction, error) {
 	if err != nil {
 		return 0, err
 	}
-
-	switch idx {
-	case 1:
-		return actionUpdate, nil
-	case 2:
-		return actionRemoveSource, nil
-	default:
-		return actionBrowseInstall, nil
-	}
+	return choices[idx].action, nil
 }
 
 // removeSource uninstalls all skills from the given source and removes it from the manifest.
@@ -299,6 +299,19 @@ func removeSource(manifest *skill.Manifest, repo string) error {
 		if s.Source == repo {
 			names = append(names, s.Name)
 		}
+	}
+
+	// Nothing to do — repo is neither tracked nor referenced by any skill.
+	tracked := false
+	for _, s := range manifest.Sources {
+		if s == repo {
+			tracked = true
+			break
+		}
+	}
+	if len(names) == 0 && !tracked {
+		terminal.Warningf("Source %s is not tracked; nothing to remove.", repo)
+		return nil
 	}
 
 	fmt.Println()
@@ -313,9 +326,7 @@ func removeSource(manifest *skill.Manifest, repo string) error {
 		return fmt.Errorf("failed to update manifest: %w", err)
 	}
 
-	if len(names) == 0 {
-		terminal.Successf("Removed source %s.", repo)
-	}
+	terminal.Successf("Removed source %s.", repo)
 	return nil
 }
 
@@ -370,19 +381,9 @@ func updateSource(manifest *skill.Manifest, repo string) error {
 }
 
 func installSkillEntry(manifest *skill.Manifest, entry *skill.SkillEntry, repo string, localDir string) error {
-	spinner := uicli.NewSpinner().
-		WithStyle(uicli.SpinnerDots).
-		WithColor(uicli.CyanColor).
-		WithMessage(fmt.Sprintf("Installing skill %q from %s...", entry.Name, repo)).
-		Start()
+	spinner := startSpinner("Installing skill %q from %s...", entry.Name, repo)
 
-	var targets []string
-	var err error
-	if localDir != "" {
-		targets, err = skill.InstallFromDir(entry.Name, localDir, entry.Path)
-	} else {
-		targets, err = skill.Install(entry.Name, repo, entry.Path)
-	}
+	targets, err := skill.InstallFromDir(entry.Name, localDir, entry.Path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			spinner.Stop()
@@ -415,11 +416,7 @@ func installSkillEntry(manifest *skill.Manifest, entry *skill.SkillEntry, repo s
 
 // installFromRepo fetches skills from a repo and lets the user pick which to install.
 func installFromRepo(manifest *skill.Manifest, repo string) error {
-	spinner := uicli.NewSpinner().
-		WithStyle(uicli.SpinnerDots).
-		WithColor(uicli.CyanColor).
-		WithMessage(fmt.Sprintf("Fetching skills from %q...", repo)).
-		Start()
+	spinner := startSpinner("Fetching skills from %q...", repo)
 
 	repoManifest, err := skill.FetchRepoManifest(repo)
 	if err != nil {
@@ -524,11 +521,7 @@ func uninstallByName(manifest *skill.Manifest, name string) error {
 		return fmt.Errorf("skill %q is not installed", name)
 	}
 
-	spinner := uicli.NewSpinner().
-		WithStyle(uicli.SpinnerDots).
-		WithColor(uicli.CyanColor).
-		WithMessage(fmt.Sprintf("Removing skill %q...", name)).
-		Start()
+	spinner := startSpinner("Removing skill %q...", name)
 
 	targets, err := skill.Uninstall(name)
 	if err != nil {
