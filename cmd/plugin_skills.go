@@ -202,7 +202,10 @@ func installFromPluginSkills(manifest *skill.Manifest) error {
 			cleanup func()
 		}{dir, cleanup})
 
-		manifest.AddSource(ss.source)
+		if err := manifest.AddSource(skill.SourceEntry{Name: ss.source, Type: skill.SourceTypeGit}); err != nil {
+			terminal.Errorf("Failed to track source %q: %v", ss.source, err)
+			continue
+		}
 		manifest.Save()
 
 		for _, entry := range ss.entries {

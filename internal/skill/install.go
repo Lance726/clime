@@ -76,6 +76,16 @@ func InstallFromDir(name, dir, skillPath string) ([]string, error) {
 	return installFiles(name, files)
 }
 
+// InstallFromTarball downloads a .tar.gz from url, extracts it (flat layout),
+// and writes the files to ~/.claude/skills/<name>/ and ~/.codex/skills/<name>/.
+func InstallFromTarball(name, url string) ([]string, error) {
+	files, err := DownloadTarball(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download tarball: %w", err)
+	}
+	return installFiles(name, files)
+}
+
 // Uninstall removes skill files from ~/.claude/skills/<name>/ and ~/.codex/skills/<name>/.
 // Returns the names of the targets removed from (e.g., ["claude", "codex"]).
 func Uninstall(name string) ([]string, error) {

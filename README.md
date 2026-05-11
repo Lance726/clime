@@ -97,6 +97,33 @@ clime skills list                  # list installed skills
 clime skills uninstall <name>      # remove a skill
 ```
 
+### Skills from a remote manifest
+
+You can also point clime at a YAML index that lists multiple skills, each downloaded as a tarball:
+
+```sh
+clime skills install https://<your-host>/skills.yaml
+```
+
+The manifest format:
+
+```yaml
+name: my-team
+
+skills:
+  - name: code-review
+    description: Reviews PRs
+    url: https://<your-host>/skills/code-review.tar.gz
+    updated_at: 2026-05-07T14:30:00Z
+
+  - name: deploy-helper
+    description: Helps draft deploy plans
+    url: https://<your-host>/skills/deploy-helper.tar.gz
+    updated_at: 2026-04-22T09:00:00Z
+```
+
+Each `url` must point to a `.tar.gz` whose root contains the skill's `SKILL.md`. A single wrapper directory (e.g. produced by `tar -czf skill-doctor.tar.gz skill-doctor/`) is stripped automatically, so both layouts work. On `clime skills install` re-run, only skills whose `updated_at` is newer than the local install time are re-downloaded.
+
 ## Shell Completions
 
 Generate shell completion scripts for bash, zsh, fish, or PowerShell:

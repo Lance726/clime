@@ -58,7 +58,11 @@ var skillsListCmd = &cobra.Command{
 				desc = "—"
 			}
 			desc = uicli.TruncateString(desc, descWidth)
-			rows = append(rows, []string{s.Name, desc, s.Source})
+			source := s.Source
+			if entry := manifest.FindSource(s.Source); entry != nil {
+				source = fmt.Sprintf("%s (%s)", entry.Name, entry.Type)
+			}
+			rows = append(rows, []string{s.Name, desc, source})
 		}
 
 		colWidths := make([]int, len(headers))
@@ -155,7 +159,11 @@ func runInteractiveSkillsInstall(manifest *skill.Manifest) error {
 		return skillsActionRunner(manifest, repo, actionBrowseInstall)
 	}
 
-	options := append(sources, pluginSkillsOption, newRepoOption)
+	labels := make([]string, len(sources))
+	for i, s := range sources {
+		labels[i] = formatSourceLabel(s)
+	}
+	options := append(labels, pluginSkillsOption, newRepoOption)
 	showSourceSpacer := true
 	for {
 		if showSourceSpacer {
@@ -192,10 +200,11 @@ func runInteractiveSkillsInstall(manifest *skill.Manifest) error {
 			return skillsActionRunner(manifest, repo, actionBrowseInstall)
 		}
 
-		repo := options[idx]
+		repo := sources[idx].Name
+		label := labels[idx]
 		showActionSpacer := true
 		for {
-			action, err := pickSourceAction(repo, showActionSpacer)
+			action, err := pickSourceAction(label, showActionSpacer)
 			if err != nil {
 				if errors.Is(err, prompt.ErrBack) {
 					showSourceSpacer = false
@@ -214,52 +223,85 @@ func runInteractiveSkillsInstall(manifest *skill.Manifest) error {
 	}
 }
 
-func uniqueSkillSources(manifest *skill.Manifest) []string {
+func uniqueSkillSources(manifest *skill.Manifest) []skill.SourceEntry {
 	// Collect unique sources from installed skills and tracked sources, preserving order.
 	seen := make(map[string]bool)
-	var sources []string
+	var sources []skill.SourceEntry
 	for _, s := range manifest.Skills {
-		if s.Source != "" && !seen[s.Source] {
-			seen[s.Source] = true
-			sources = append(sources, s.Source)
+		if s.Source == "" || seen[s.Source] {
+			continue
+		}
+		seen[s.Source] = true
+		if entry := manifest.FindSource(s.Source); entry != nil {
+			sources = append(sources, *entry)
+		} else {
+			// Skill references a source that's missing from Sources (e.g. file
+			// edited by hand). Default to git so the menu still works.
+			sources = append(sources, skill.SourceEntry{Name: s.Source, Type: skill.SourceTypeGit})
 		}
 	}
 	for _, s := range manifest.Sources {
-		if s != "" && !seen[s] {
-			seen[s] = true
-			sources = append(sources, s)
+		if s.Name == "" || seen[s.Name] {
+			continue
 		}
+		seen[s.Name] = true
+		sources = append(sources, s)
 	}
-
 	return sources
 }
 
+func formatSourceLabel(s skill.SourceEntry) string {
+	if s.Type == "" {
+		return s.Name
+	}
+	return fmt.Sprintf("%s (%s)", s.Name, s.Type)
+}
+
 func runSkillsSourceAction(manifest *skill.Manifest, repo string, action sourceAction) error {
-	if err := validateSkillRepoSource(repo); err != nil {
-		return err
+	// Skip strict validation for sources we already track so users can refer to
+	// remote-yaml sources by their bare name (e.g. "my-team") from the menu.
+	entry := manifest.FindSource(repo)
+	if entry == nil {
+		if err := validateSkillRepoSource(repo); err != nil {
+			return err
+		}
 	}
 
-	switch action {
-	case actionRemoveSource:
+	// Remove flow is identical regardless of source type — handle it first.
+	if action == actionRemoveSource {
 		return removeSource(manifest, repo)
-	case actionUpdate:
-		return updateSource(manifest, repo)
-	default:
-		return installFromRepo(manifest, repo)
 	}
+
+	isRemote := (entry != nil && entry.Type == skill.SourceTypeRemoteYAML) ||
+		(entry == nil && skill.IsRemoteManifestURL(repo))
+
+	if isRemote {
+		if action == actionUpdate {
+			return updateRemoteSource(manifest, repo)
+		}
+		return installFromRemoteManifest(manifest, repo)
+	}
+
+	if action == actionUpdate {
+		return updateSource(manifest, repo)
+	}
+	return installFromRepo(manifest, repo)
 }
 
 func validateSkillRepoSource(repo string) error {
 	if repo == "" {
-		return fmt.Errorf("invalid repo format: expected owner/repo or local path, got %q", repo)
+		return fmt.Errorf("invalid repo format: expected owner/repo, URL, or local path, got %q", repo)
 	}
 	if _, ok, err := skill.LocalRepoDir(repo); err != nil {
 		return err
 	} else if ok {
 		return nil
 	}
+	if skill.IsRemoteManifestURL(repo) {
+		return nil
+	}
 	if !strings.Contains(repo, "/") {
-		return fmt.Errorf("invalid repo format: expected owner/repo or local path, got %q", repo)
+		return fmt.Errorf("invalid repo format: expected owner/repo, URL, or local path, got %q", repo)
 	}
 	return nil
 }
@@ -302,14 +344,7 @@ func removeSource(manifest *skill.Manifest, repo string) error {
 	}
 
 	// Nothing to do — repo is neither tracked nor referenced by any skill.
-	tracked := false
-	for _, s := range manifest.Sources {
-		if s == repo {
-			tracked = true
-			break
-		}
-	}
-	if len(names) == 0 && !tracked {
+	if len(names) == 0 && manifest.FindSource(repo) == nil {
 		terminal.Warningf("Source %s is not tracked; nothing to remove.", repo)
 		return nil
 	}
@@ -432,7 +467,9 @@ func installFromRepo(manifest *skill.Manifest, repo string) error {
 	spinner.Success(fmt.Sprintf("Found %d skill(s) in %q", len(repoManifest.Skills), repo))
 
 	// Record the source so it appears in future interactive menus.
-	manifest.AddSource(repo)
+	if err := manifest.AddSource(skill.SourceEntry{Name: repo, Type: skill.SourceTypeGit}); err != nil {
+		return err
+	}
 	if err := manifest.Save(); err != nil {
 		return fmt.Errorf("failed to save skill source: %w", err)
 	}
