@@ -6,6 +6,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/git-hulk/clime/internal/plugin"
@@ -23,9 +24,12 @@ type NpmInstaller struct {
 }
 
 // NewNpmInstaller returns an NpmInstaller for the given npm package.
+// A bare "owner/repo" string is treated as a scoped package and rewritten to
+// "@owner/repo"; npm would otherwise resolve it as a GitHub shorthand, which
+// is rarely what callers want when they specify --npm.
 func NewNpmInstaller(pkg string) *NpmInstaller {
 	return &NpmInstaller{
-		Package:         pkg,
+		Package:         normalizeNpmPackageName(pkg),
 		runNpmInstall:   runNpmGlobalInstall,
 		runNpmUpdate:    runNpmGlobalUpdate,
 		runNpmUninstall: runNpmGlobalUninstall,
@@ -35,27 +39,43 @@ func NewNpmInstaller(pkg string) *NpmInstaller {
 	}
 }
 
+// normalizeNpmPackageName prepends "@" to bare "owner/repo" strings so npm
+// treats them as scoped registry packages rather than GitHub shorthand.
+// Inputs that are already scoped, unscoped, URLs, protocol-prefixed
+// (git+https://, github:, file:, etc.), or local paths are returned as-is.
+func normalizeNpmPackageName(pkg string) string {
+	pkg = strings.TrimSpace(pkg)
+	if pkg == "" || strings.HasPrefix(pkg, "@") {
+		return pkg
+	}
+	if strings.ContainsAny(pkg, ":\\") || strings.HasPrefix(pkg, ".") || strings.HasPrefix(pkg, "/") {
+		return pkg
+	}
+	if strings.Count(pkg, "/") == 1 {
+		return "@" + pkg
+	}
+	return pkg
+}
+
 func (n *NpmInstaller) Install(name string) (string, error) {
 	if _, err := osexec.LookPath("npm"); err != nil {
 		return "", fmt.Errorf("npm is not installed or not on PATH: %w", err)
 	}
+
+	npmBinDir, err := n.npmGlobalBinDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine npm global bin directory: %w", err)
+	}
+	before := snapshotDirEntries(npmBinDir)
 
 	if err := n.runNpmInstall(n.Package); err != nil {
 		return "", fmt.Errorf("npm install failed: %w", err)
 	}
 
 	binName := plugin.BinPrefix + name
-	npmBinDir, err := n.npmGlobalBinDir()
+	binaryPath, err := locateNpmInstalledBinary(npmBinDir, n.Package, name, binName, before)
 	if err != nil {
-		return "", fmt.Errorf("failed to determine npm global bin directory: %w", err)
-	}
-	binaryPath := filepath.Join(npmBinDir, binName)
-
-	if _, err := os.Stat(binaryPath); err != nil {
-		binaryPath = filepath.Join(npmBinDir, name)
-		if _, err := os.Stat(binaryPath); err != nil {
-			return "", fmt.Errorf("binary %q or %q not found in npm global bin dir %q after install: %w", binName, name, npmBinDir, err)
-		}
+		return "", err
 	}
 
 	installDir, err := n.pluginBinDir()
@@ -162,6 +182,56 @@ func npmGlobalBinDir() (string, error) {
 		return "", fmt.Errorf("failed to get npm global prefix: %w", err)
 	}
 	return filepath.Join(strings.TrimSpace(string(out)), "bin"), nil
+}
+
+// snapshotDirEntries returns the set of entry names directly under dir, or an
+// empty set if the directory cannot be read.
+func snapshotDirEntries(dir string) map[string]struct{} {
+	set := make(map[string]struct{})
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return set
+	}
+	for _, e := range entries {
+		set[e.Name()] = struct{}{}
+	}
+	return set
+}
+
+// locateNpmInstalledBinary picks the binary that an npm install created.
+// It prefers clime-<name>, then <name>, then falls back to a single new entry
+// added to npmBinDir during the install. The error explains why no candidate
+// was found, including any unexpected new entries.
+func locateNpmInstalledBinary(npmBinDir, pkg, name, binName string, before map[string]struct{}) (string, error) {
+	if path := filepath.Join(npmBinDir, binName); fileExists(path) {
+		return path, nil
+	}
+	if path := filepath.Join(npmBinDir, name); fileExists(path) {
+		return path, nil
+	}
+
+	after := snapshotDirEntries(npmBinDir)
+	var added []string
+	for entry := range after {
+		if _, existed := before[entry]; !existed {
+			added = append(added, entry)
+		}
+	}
+	sort.Strings(added)
+
+	switch len(added) {
+	case 0:
+		return "", fmt.Errorf("npm install of %q did not create a binary in %q; the package may not provide a CLI (check that the package name is correct, e.g. a scoped package starting with \"@\")", pkg, npmBinDir)
+	case 1:
+		return filepath.Join(npmBinDir, added[0]), nil
+	default:
+		return "", fmt.Errorf("npm install of %q created multiple binaries in %q (%s); none matched %q or %q — rerun with a plugin name matching one of them", pkg, npmBinDir, strings.Join(added, ", "), binName, name)
+	}
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // getNpmInstalledVersion returns the actual installed version of an npm package.
