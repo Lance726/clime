@@ -87,6 +87,8 @@ clime init                                 # saved source or built-in defaults
 clime init https://example.com/tools.yaml   # use and remember your team's manifest
 ```
 
+`clime plugin install <name>` without a source flag installs `<name>` as declared in that manifest.
+
 Share a `skills.yaml` separately and apply it with `clime skills sync --manifest ./skills.yaml`.
 
 ## More commands
