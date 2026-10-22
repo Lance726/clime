@@ -154,7 +154,7 @@ func pluginListColumns(discoveredPlugin plugin.DiscoveredPlugin, manifest *plugi
 var pluginInstallCmd = &cobra.Command{
 	Use:   "install [name]",
 	Short: "Install a plugin from GitHub Releases, npm, Homebrew, or an install script",
-	Long:  "Downloads and installs a plugin. Run without arguments for an interactive wizard. With a name argument, looks for git-hulk/clime-<name> on GitHub by default. Use --npm, --brew, --repo, or --script to specify an alternative source.",
+	Long:  "Downloads and installs a plugin. Run without arguments for an interactive wizard. With a name argument, uses the plugin's entry from the list `clime init` installed from, falling back to git-hulk/clime-<name> on GitHub. Use --npm, --brew, --repo, or --script to specify an alternative source.",
 	Args:  cobra.MaximumNArgs(1),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) != 0 {
@@ -198,9 +198,40 @@ var pluginInstallCmd = &cobra.Command{
 			return err
 		}
 
-		pluginInstall.Name = name
-		return pluginInstallRunner(manifest, name, pluginInstall)
+		pluginConfig := pluginInstall
+		pluginConfig.Name = name
+		if sources == 0 {
+			pluginConfig, err = pluginFromInitSource(manifest.InitURL, pluginConfig)
+			if err != nil {
+				return err
+			}
+		}
+		return pluginInstallRunner(manifest, name, pluginConfig)
 	},
+}
+
+// pluginFromInitSource looks up pluginConfig.Name in the plugin list that
+// `clime init` resolves, so a bare `clime plugin install <name>` installs from
+// the same source as init. --binary-path and --description still take
+// precedence; plugins not in the list keep the GitHub default convention.
+func pluginFromInitSource(initURL string, pluginConfig plugin.Plugin) (plugin.Plugin, error) {
+	plugins, err := resolvePlugins(initURL)
+	if err != nil {
+		return pluginConfig, err
+	}
+	for _, listed := range plugins {
+		if listed.Name != pluginConfig.Name {
+			continue
+		}
+		if pluginConfig.BinaryPath != "" {
+			listed.BinaryPath = pluginConfig.BinaryPath
+		}
+		if pluginConfig.Description != "" {
+			listed.Description = pluginConfig.Description
+		}
+		return listed, nil
+	}
+	return pluginConfig, nil
 }
 
 func runInteractivePluginInstall() error {
